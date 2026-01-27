@@ -7,6 +7,7 @@ using LinearAlgebra
 using StaticArrays
 using CUDA
 using Distributions
+using JLD2
 
 
 
@@ -98,10 +99,80 @@ function main(; Ntraj=10, max_GPUs=1, systems=[:nominal_sys])
     return solutions, setup
 end
 
-function visualize(solutions, setup; 
+function visualize(solutions, setup;
     linewidth=0.3, linealpha=0.1, save_dir=@__DIR__)
     MultiRotor.plot_trajectory_3D(solutions.nominal_sol, setup.waypoints;
                                    linewidth = linewidth, linealpha = linealpha, save_path = joinpath(save_dir, "trajectory_3D.png"))
     MultiRotor.plot_states(solutions.nominal_sol;
                            linewidth = linewidth, linealpha = linealpha, save_path = joinpath(save_dir, "states.png"))
 end
+
+
+## Commands to run simulations
+# solutions, setup = main(; Ntraj= Int(1e3), max_GPUs= 1 , systems=[:nominal_sys])
+# visualize(solutions, setup; linewidth=0.3, linealpha=0.1, save_dir=@__DIR__)
+
+# ================== SAVE/LOAD =====================
+function save_solutions(solutions, setup; save_dir=@__DIR__, filename="saved_solutions.jld2")
+    filepath = joinpath(save_dir, filename)
+    @save filepath solutions setup
+    @info "Saved solutions to $filepath"
+end
+
+function load_solutions(; save_dir=@__DIR__, filename="saved_solutions.jld2")
+    filepath = joinpath(save_dir, filename)
+    @load filepath solutions setup
+    @info "Loaded solutions from $filepath"
+    return solutions, setup
+end
+
+# ================== DATA LOGGING =====================
+function get_training_data(solutions, setup)
+    gain = (Kp_position=5f0, Kd_position=20f0, Kp_attitude=10000f0, Kd_attitude=5000f0)
+    dp = (; mass=181.79f0, gravity=32.17f0, waypoints=setup.waypoints)
+    return MultiRotor.extract_training_data(solutions, gain, dp)
+end
+
+# ================== TESTS =====================
+# Test PD controller Jacobian computation
+function test_jacobian()
+    mass = 181.79f0
+    gravity = 32.17f0
+    J = @SMatrix Float32[13052 58 -2969; 58 16661 -986; -2969 -986 24735]
+    J_inv = inv(J)
+
+    waypoints = MultiRotor.waypoints([
+        ([0f0, 0f0, -100f0], 12.5f0),
+        ([-500f0, 200f0, -100f0], 25.0f0),
+    ])
+
+    dp = (; mass, gravity, J, J_inv, waypoints)
+    gain = (Kp_position = 5f0, Kd_position = 20f0, Kp_attitude = 10000f0, Kd_attitude = 5000f0)
+
+    # Test state (hover at origin)
+    x = @SVector Float32[0,0,0, 0,0,0, 0,0,0, 1,0,0,0]
+
+    # Compute Jacobian
+    J_u = MultiRotor.cntrl_PD_jacobian(5.0, x, gain, dp)
+
+    @info "Jacobian size: $(size(J_u))"
+    @info "Jacobian computed successfully"
+
+    return J_u
+end
+
+# Test training data extraction
+function test_training_data()
+    solutions, setup = main(; Ntraj=10, max_GPUs=1, systems=[:nominal_sys])
+    training_data = get_training_data(solutions, setup)
+
+    @info "Number of trajectories: $(length(training_data))"
+    @info "Timesteps per trajectory: $(length(training_data[1].t))"
+    @info "State size: $(length(training_data[1].x[1]))"
+    @info "Control size: $(length(training_data[1].u[1]))"
+    @info "Jacobian size: $(size(training_data[1].J[1]))"
+
+    return training_data
+end
+
+
