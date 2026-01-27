@@ -15,4 +15,5 @@ function get_current_waypoint(t, waypoints)
         t < wp.time && return wp.position
     end
     return waypoints[end].position
-end  
+end
+

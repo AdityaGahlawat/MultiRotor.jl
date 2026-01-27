@@ -106,3 +106,4 @@ function plot_states(ensemble;
 
     return fig
 end
+
