@@ -26,7 +26,7 @@ julia -t auto
 ```
 Add codebase to working environment
 ```julia
-] add add https://github.com/AdityaGahlawat/MultiRotor.jl
+] add https://github.com/AdityaGahlawat/MultiRotor.jl
 ```
 
 ## Ready-to-use Systems 
